@@ -125,6 +125,7 @@ public class BridgeServer
     public async Task<string?> SendStateAndWaitForActionAsync(
         string stateJson, TimeSpan timeout, CancellationToken ct)
     {
+        stateJson = StrategyContext.Attach(stateJson);
         string requestId = Interlocked.Increment(ref _requestCounter).ToString();
         TaskCompletionSource<string> tcs;
         lock (_pendingLock)

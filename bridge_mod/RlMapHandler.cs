@@ -90,6 +90,7 @@ public class RlMapHandler : IScreenHandler, IHandler
                 ["type"] = mp.Point.PointType.ToString(),
                 ["row"] = mp.Point.coord.row,
                 ["col"] = mp.Point.coord.col,
+                ["routes"] = StrategyContext.Routes(mp.Point),
             });
         }
 

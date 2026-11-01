@@ -117,6 +117,7 @@ def run_agent(
     verbose: bool = False,
     record_replay_path: str | None = None,
     replay_factory: str | None = None,
+    strategy_model_path: str | None = None,
 ) -> None:
     """Main agent loop.
 
@@ -131,6 +132,7 @@ def run_agent(
         verbose: Whether to log every action taken.
     """
     model = load_model(model_path) if model_path else None
+    strategy_model = load_model(strategy_model_path) if strategy_model_path else None
     adapter = StateAdapter()
 
     logger.info("Connecting to STS2 at %s:%d...", host, port)
@@ -202,6 +204,11 @@ def run_agent(
                     continue
                 if phase == MSG_TYPE_ERROR:
                     logger.warning("Game error: %s", state.get("message", ""))
+                    continue
+
+                if strategy_model is not None and phase in Phase.NON_COMBAT_PHASES:
+                    from sts2_env.bridge.strategy_adapter import act_strategy
+                    act_strategy(strategy_model, client, state, deterministic)
                     continue
 
                 if phase in Phase.COMBAT_PHASES:
@@ -727,6 +734,8 @@ def main() -> None:
         help="Optional module:function factory to store in replay metadata for later comparison.",
     )
 
+    parser.add_argument('--strategy-model-path', default=None,
+                        help='Separate strategy checkpoint; requires strategy bridge schema v1.')
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -745,6 +754,7 @@ def main() -> None:
         verbose=args.verbose,
         record_replay_path=args.record_replay,
         replay_factory=args.replay_factory,
+        strategy_model_path=args.strategy_model_path,
     )
 
 

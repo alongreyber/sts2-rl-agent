@@ -143,6 +143,14 @@ Key flags:
 
 ### Train a Full-Run Agent
 
+For the separate strategy/combat baseline pilot, see
+[the strategy policy guide](docs/STRATEGY_POLICY.md). It provides a current
+training entry point, structured strategy observations, and held-out evaluation:
+
+```bash
+python scripts/pilot_strategy.py --combat-steps 200000 --strategy-steps 20000 --episodes 100
+```
+
 Train an agent that handles an entire run (combat + map + rewards + events):
 
 ```bash

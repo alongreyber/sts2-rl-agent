@@ -46,6 +46,9 @@ bridge_mod_minimal/obj/
 extracted_pck/
 
 # Temp
+.python/
+.pilot-venv/
+.dotnet-sdk/
 *.log
 .pytest_cache/
 .specstory/

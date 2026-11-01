@@ -51,8 +51,10 @@ class STS2CombatEnv(gymnasium.Env):
         player_max_hp: int = IRONCLAD_STARTING_HP,
         max_turns: int = 200,
         render_mode: str | None = None,
+        character_id: str = "Ironclad",
     ):
         super().__init__()
+        self.character_id = character_id
         self.observation_space = spaces.Box(
             low=-1.0, high=10.0, shape=(OBS_SIZE,), dtype=np.float32
         )
@@ -77,7 +79,8 @@ class STS2CombatEnv(gymnasium.Env):
         rng = Rng(rng_seed)
 
         # Create deck
-        deck = create_ironclad_starter_deck()
+        from sts2_env.run.run_manager import _get_starter_deck
+        deck = _get_starter_deck(self.character_id)
 
         # Create combat
         self.combat = CombatState(
@@ -85,7 +88,7 @@ class STS2CombatEnv(gymnasium.Env):
             player_max_hp=self.player_max_hp,
             deck=deck,
             rng_seed=rng_seed,
-            character_id="Ironclad",
+            character_id=self.character_id,
         )
 
         # Setup encounter
