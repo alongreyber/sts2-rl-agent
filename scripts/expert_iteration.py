@@ -11,18 +11,11 @@ from scripts.search_floor_one import ReplayCombat, heuristic, search_scores
 from sts2_env.characters.all import get_character
 from sts2_env.encounters.act1 import WEAK_ENCOUNTERS
 from sts2_env.encounters.act4 import WEAK_ENCOUNTERS as UNDERDOCKS_WEAK
-from sts2_env.gym_env.observation import encode_observation
+from sts2_env.gym_env.combat_observation import encode, SCHEMA_SHA256
 
 
 def observation(combat):
-    cards = tuple(card.name for card, _ in get_character(combat.character_id).starting_deck)
-    piles = [
-        sum(card.card_id.name == name for card in pile) / 10
-        for pile in (combat.draw_pile, combat.discard_pile, combat.exhaust_pile)
-        for name in cards
-    ]
-    hp = [enemy.current_hp / 100 for enemy in combat.enemies][:5]
-    return np.concatenate((encode_observation(combat), piles, hp + [0] * (5 - len(hp))))
+    return encode(combat)
 
 
 def probabilities(logits, mask):
@@ -110,10 +103,12 @@ def main():
         if args.output:
             parser.error("--output is for training runs")
         with np.load(args.checkpoint) as checkpoint:
-            if checkpoint["schema_version"] != 1 or checkpoint["character"] != args.character:
+            if checkpoint["schema_version"] != 2 or checkpoint["character"] != args.character:
                 parser.error("checkpoint schema or character does not match")
             if eval_start < checkpoint["training_end"]:
                 parser.error("--eval-start must follow the checkpoint's training seeds")
+            if str(checkpoint["schema_fingerprint"]) != SCHEMA_SHA256:
+                parser.error("checkpoint observation layout does not match")
             hidden, output = checkpoint["hidden"], checkpoint["output"]
             apprentice = Apprentice(hidden.shape[0] - 1, output.shape[1], rng)
             apprentice.hidden, apprentice.output = hidden, output
@@ -134,7 +129,7 @@ def main():
         args.output.parent.mkdir(parents=True, exist_ok=True)
         np.savez_compressed(args.output, hidden=apprentice.hidden, output=apprentice.output,
                             features=features, masks=masks, targets=targets,
-                            character=args.character, schema_version=1, training_end=training_end)
+                            character=args.character, schema_version=2, schema_fingerprint=SCHEMA_SHA256, training_end=training_end)
 
     for encounter in encounters:
         seeds = range(eval_start, eval_start + args.eval_seeds)

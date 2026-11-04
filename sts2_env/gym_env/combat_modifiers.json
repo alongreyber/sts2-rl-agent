@@ -1,0 +1,36 @@
+{
+  "enchantments": [
+    "Adroit",
+    "Clone",
+    "Corrupted",
+    "DeprecatedEnchantment",
+    "Glam",
+    "Goopy",
+    "Imbued",
+    "Inky",
+    "Instinct",
+    "Momentum",
+    "Nimble",
+    "PerfectFit",
+    "RoyallyApproved",
+    "Sharp",
+    "Slither",
+    "SlumberingEssence",
+    "SoulsPower",
+    "Sown",
+    "Spiral",
+    "Steady",
+    "Swift",
+    "TezcatarasEmber",
+    "Vigorous"
+  ],
+  "afflictions": [
+    "Bound",
+    "Entangled",
+    "Galvanized",
+    "Hexed",
+    "Ringing",
+    "Smog",
+    "Tainted"
+  ]
+}

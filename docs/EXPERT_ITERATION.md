@@ -46,9 +46,12 @@ measure improvements even when win rates saturate.
 
 ## Current limits
 
-The apprentice observation extends the existing combat vector with absolute
-enemy HP and unordered starter-card pile counts. It still omits much of the
-v2/v3 public state, including full choice, orb and ally features. NPZ training
+The apprentice now uses a rich public combat observation with registered powers,
+absolute HP, unordered pile composition, choice options, orbs, relic state,
+modifiers, history and allies. The compact encoder used for the initial
+evaluation above has been replaced. The MLP architecture remains unchanged.
+Checkpoints carry an observation layout fingerprint and incompatible older
+checkpoints are rejected. NPZ training
 data contains encoded features and targets, rather than re-encodable public
 snapshots. Search samples the current hidden draw order but retains seeded
 future RNG and enemy AI state. Its results are therefore simulator benchmarks;
