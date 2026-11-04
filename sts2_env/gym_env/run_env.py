@@ -309,6 +309,8 @@ class STS2RunEnv(gymnasium.Env):
         super().reset(seed=seed)
 
         run_seed = int(self.np_random.integers(0, INT_MAX_EXCLUSIVE))
+        if options and 'run_seed' in options:
+            run_seed = int(options['run_seed'])
         self._mgr = RunManager(
             seed=run_seed,
             character_id=self._character_id,

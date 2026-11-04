@@ -24,3 +24,6 @@ include = ["sts2_env*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.setuptools.package-data]
+"sts2_env.gym_env" = ["combat_modifiers.json"]

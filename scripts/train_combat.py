@@ -18,12 +18,12 @@ from pathlib import Path
 import numpy as np
 
 
-def make_env(seed: int = 0):
+def make_env(seed: int = 0, observation_version: int = 3):
     """Create a single STS2CombatEnv."""
     from sts2_env.gym_env.combat_env import STS2CombatEnv
 
     def _init():
-        env = STS2CombatEnv()
+        env = STS2CombatEnv(observation_version=observation_version)
         env.reset(seed=seed)
         return env
 
@@ -36,7 +36,7 @@ def train(args):
         from sb3_contrib.common.wrappers import ActionMasker
         from sb3_contrib.common.maskable.utils import get_action_masks
         from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
-        from stable_baselines3.common.callbacks import EvalCallback
+        from sb3_contrib.common.maskable.callbacks import MaskableEvalCallback as EvalCallback
     except ImportError:
         print("Training requires sb3-contrib and stable-baselines3.")
         print("Install with: pip install 'sts2-rl-agent[train]'")
@@ -61,7 +61,7 @@ def train(args):
 
     def make_masked_env(seed: int):
         def _init():
-            env = STS2CombatEnv()
+            env = STS2CombatEnv(observation_version=args.observation_version)
             env = ActionMasker(env, mask_fn)
             return env
         return _init
@@ -113,6 +113,11 @@ def train(args):
     # Save final model
     final_path = str(output_dir / "final_model")
     model.save(final_path)
+    import json
+    from sts2_env.gym_env.observation_versions import schema
+    SCHEMA_SHA256=schema(args.observation_version).SCHEMA_SHA256 if args.observation_version>=2 else None
+    Path(final_path+'.observation.json').write_text(json.dumps({'version':args.observation_version,
+        'size':model.observation_space.shape[0],'schema_sha256':SCHEMA_SHA256},indent=2))
     print(f"\nTraining complete in {elapsed:.1f}s")
     print(f"Final model saved to: {final_path}")
     print(f"Best model saved to: {output_dir / 'best_model'}")
@@ -133,7 +138,8 @@ def evaluate(model, n_episodes: int = 100):
     def mask_fn(env):
         return env.action_masks()
 
-    env = ActionMasker(STS2CombatEnv(), mask_fn)
+    from sts2_env.gym_env.observation_versions import version_for_shape
+    env = ActionMasker(STS2CombatEnv(observation_version=version_for_shape(model.observation_space.shape)), mask_fn)
     wins = 0
     total_rewards = []
 
@@ -180,6 +186,7 @@ def main():
                         help="Episodes per evaluation (default: 20)")
     parser.add_argument("--output-dir", type=str, default="output/combat_ppo",
                         help="Output directory (default: output/combat_ppo)")
+    parser.add_argument('--observation-version',type=int,choices=(1,2,3),default=3)
     args = parser.parse_args()
     train(args)
 

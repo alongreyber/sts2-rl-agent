@@ -52,11 +52,20 @@ class STS2CombatEnv(gymnasium.Env):
         max_turns: int = 200,
         render_mode: str | None = None,
         character_id: str = "Ironclad",
+        observation_version: int = 1,
     ):
         super().__init__()
+        if observation_version not in (1,2,3):raise ValueError('Unknown observation version')
+        self.observation_version=observation_version
+        self._encode=encode_observation
+        size=OBS_SIZE
+        if observation_version>=2:
+            from sts2_env.gym_env.observation_versions import schema
+            expanded=schema(observation_version)
+            self._encode=expanded.encode;size=expanded.OBS_SIZE
         self.character_id = character_id
         self.observation_space = spaces.Box(
-            low=-1.0, high=10.0, shape=(OBS_SIZE,), dtype=np.float32
+            low=-np.inf, high=np.inf, shape=(size,), dtype=np.float32
         )
         self.action_space = spaces.Discrete(ACTION_SPACE_SIZE)
         self.encounter_pool = encounter_pool or ALL_ACT1_ENCOUNTERS
@@ -99,7 +108,7 @@ class STS2CombatEnv(gymnasium.Env):
         # Start combat
         self.combat.start_combat()
 
-        obs = encode_observation(self.combat)
+        obs = self._encode(self.combat)
         info = {"action_mask": get_action_mask(self.combat)}
         return obs, info
 
@@ -134,7 +143,7 @@ class STS2CombatEnv(gymnasium.Env):
                 if not success:
                     logger.debug("Ignored invalid card action %d", action)
 
-        obs = encode_observation(self.combat)
+        obs = self._encode(self.combat)
         reward = compute_reward(self.combat, prev_hp)
         terminated = self.combat.is_over
         # Gymnasium TimeLimit convention: truncation is reported through

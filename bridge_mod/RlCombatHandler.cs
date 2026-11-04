@@ -449,6 +449,7 @@ public class RlCombatHandler : IRoomHandler, IHandler
                 ["block"] = playerCreature.Block,
                 ["energy"] = pcs?.Energy ?? 0,
                 ["max_energy"] = pcs?.MaxEnergy ?? 3,
+                ["stars"] = pcs?.Stars ?? 0,
             };
 
             // Player potions (empty slots are skipped by Player.Potions)
@@ -504,6 +505,23 @@ public class RlCombatHandler : IRoomHandler, IHandler
             var state = new Dictionary<string, object>
             {
                 ["type"] = "combat_action",
+                ["observation_schema_version"] = 3,
+                ["relics"] = player.Relics.Select(r => r.Id.Entry).ToArray(),
+                ["relic_states"] = player.Relics.Select(r => new Dictionary<string, object> {
+                    ["id"] = r.Id.Entry, ["counter"] = r.ShowCounter ? (object)r.DisplayAmount : null!,
+                    ["usage"] = PublicRelicUsage.Of(r), ["stack"] = r.StackCount, ["melted"] = r.IsMelted, ["status"] = r.Status.ToString() }).ToArray(),
+                ["history"] = combatState == null ? new Dictionary<string, int>() : PublicCombatHistory.Of(player, combatState),
+                ["allies"] = combatState == null ? new List<object>() : combatState.Allies.Where(a => a != player.Creature).Select(a => (object)new Dictionary<string, object> {
+                    ["id"] = a.ModelId.Entry, ["hp"] = a.CurrentHp, ["max_hp"] = a.MaxHp, ["block"] = a.Block, ["alive"] = a.IsAlive,
+                    ["powers"] = a.Powers.Select(p => new Dictionary<string, object> { ["id"] = p.Id.Entry, ["amount"] = p.Amount }).ToArray() }).ToList(),
+                ["potion_capacity"] = player.PotionSlots.Count,
+                ["orb_capacity"] = pcs?.OrbQueue.Capacity ?? 0,
+                ["orbs"] = pcs == null ? new List<object>() : pcs.OrbQueue.Orbs.Select(o => (object)new Dictionary<string, object> { ["id"] = o.Id.Entry, ["passive"] = o.PassiveVal, ["evoke"] = o.EvokeVal }).ToList(),
+                ["choice"] = null!,
+                ["piles"] = new Dictionary<string, object> {
+                    ["draw"] = PublicPile(pcs?.DrawPile.Cards),
+                    ["discard"] = PublicPile(pcs?.DiscardPile.Cards),
+                    ["exhaust"] = PublicPile(pcs?.ExhaustPile.Cards) },
                 ["player"] = playerObj,
                 ["hand"] = handCards,
                 ["enemies"] = enemies,
@@ -546,6 +564,22 @@ public class RlCombatHandler : IRoomHandler, IHandler
         {
             ["id"] = card.Id.Entry,
             ["cost"] = cost,
+            ["base_damage"] = card.DynamicVars.Where(v => v.Key == "Damage").Select(v => v.Value.BaseValue).FirstOrDefault(),
+            ["base_block"] = card.DynamicVars.Where(v => v.Key == "Block").Select(v => v.Value.BaseValue).FirstOrDefault(),
+            ["variables"] = card.DynamicVars.ToDictionary(v => v.Key, v => v.Value.BaseValue),
+            ["modifiers"] = new Dictionary<string, object> {
+                ["enchantments"] = card.Enchantment == null ? new Dictionary<string, int>() : new Dictionary<string, int> { [card.Enchantment.Id.Entry] = card.Enchantment.Amount },
+                ["afflictions"] = card.Affliction == null ? new Dictionary<string, int>() : new Dictionary<string, int> { [card.Affliction.Id.Entry] = card.Affliction.Amount } },
+            ["star_x"] = card.HasStarCostX, ["replay_count"] = card.BaseReplayCount,
+            ["bound"] = card.Affliction?.Id.Entry == "BOUND",
+            ["exhaust_next"] = card.ExhaustOnNextPlay,
+            ["ethereal"] = card.Keywords.Any(k => k.ToString() == "Ethereal"),
+            ["unplayable"] = card.Keywords.Any(k => k.ToString() == "Unplayable"),
+            ["sly"] = card.Keywords.Any(k => k.ToString() == "Sly"),
+            ["star_cost"] = Math.Max(0, card.GetStarCostWithModifiers()),
+            ["costs_x"] = card.EnergyCost.CostsX,
+            ["retain"] = card.ShouldRetainThisTurn,
+            ["exhaust"] = card.Keywords.Any(k => k.ToString() == "Exhaust"),
             ["type"] = card.Type.ToString(),
             ["target"] = card.TargetType.ToString(),
             ["playable"] = card.CanPlay(out reason, out preventer),
@@ -587,6 +621,14 @@ public class RlCombatHandler : IRoomHandler, IHandler
             try
             {
                 var nextMove = enemy.Monster.NextMove;
+                data["intents"] = nextMove.Intents.Select(intent => {
+                    var value = new Dictionary<string, object> { ["type"] = intent.GetType().Name };
+                    if (intent is AttackIntent attack) {
+                        value["damage"] = attack.GetSingleDamage(enemy.CombatState.PlayerCreatures, enemy);
+                        value["hits"] = Math.Max(1, attack.Repeats);
+                    }
+                    return value;
+                }).ToList();
                 if (nextMove?.Intents != null && nextMove.Intents.Count > 0)
                 {
                     AbstractIntent firstIntent = nextMove.Intents[0];
@@ -672,6 +714,12 @@ public class RlCombatHandler : IRoomHandler, IHandler
     /// the real draw/discard order so hand evolution matches the live game
     /// (draw order is otherwise driven by the sim's own RNG).
     /// </summary>
+    private List<Dictionary<string, object>> PublicPile(System.Collections.Generic.IReadOnlyList<CardModel>? pile)
+    {
+        // Multiset only: never expose hidden draw order to the policy.
+        return pile == null ? new() : pile.OrderBy(c => c.Id.Entry).ThenBy(c => c.CurrentUpgradeLevel).Select(SerializeCard).ToList();
+    }
+
     private static List<string> PileIds(System.Collections.Generic.IReadOnlyList<CardModel>? pile)
     {
         var ids = new List<string>();

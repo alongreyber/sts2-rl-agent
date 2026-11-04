@@ -15,6 +15,7 @@ from gymnasium import spaces
 
 from sts2_env.gym_env.run_env import STS2RunEnv
 from sts2_env.run.run_manager import RunManager
+from sts2_env.gym_env.full_run_rewards import FullRunRewards, completed_rounds
 
 MAX_CHOICES = 128
 FEATURES = 128
@@ -131,7 +132,8 @@ class StrategyEnv(gym.Env):
         super().reset(seed=seed)
         self.steps = 0
         self.ended = False
-        self.run.reset(seed=seed)
+        self.run.reset(seed=seed, options=options)
+        self.rewards=FullRunRewards(self.run._mgr.run_state.total_floor)
         return self._obs(), {}
 
     def step(self, action):
@@ -143,11 +145,17 @@ class StrategyEnv(gym.Env):
         mgr.take_action(self.choices[int(action)])  # Exceptions propagate: never score bugs as defeats.
         self.steps += 1
         truncated = False
+        rounds=0
         while not mgr.is_over and mgr.phase == RunManager.PHASE_COMBAT:
             if self.steps >= self.run.max_steps:
                 truncated = True
                 break
             obs = self.run._encode_obs()[:self.run.observation_space.shape[0] - 20]
+            if self.combat_model is not None:
+                from sts2_env.gym_env.observation_versions import schema,version_for_shape
+                version=version_for_shape(self.combat_model.observation_space.shape)
+                if version>=2:
+                    obs=schema(version).encode(mgr.get_combat_state())
             mask = self.run.action_masks()
             from sts2_env.core.constants import ACTION_SPACE_SIZE
             mask = mask[:ACTION_SPACE_SIZE]
@@ -156,14 +164,21 @@ class StrategyEnv(gym.Env):
             else:
                 chosen, _ = self.combat_model.predict(obs, action_masks=mask, deterministic=True)
             # Direct dispatch avoids run_env's exception-to-loss handler.
+            combat=mgr.get_combat_state()
+            previous_round=combat.turn_count
+            ended_turn=int(chosen)==0 and combat.pending_choice is None
             self.run._step_combat(int(chosen))
+            rounds+=completed_rounds(combat,previous_round,ended_turn)
             self.steps += 1
         truncated = truncated or (not mgr.is_over and self.steps >= self.run.max_steps)
-        terminated = mgr.is_over
-        self.ended = terminated or truncated
+        game_limit=truncated
+        terminated = mgr.is_over or game_limit
+        truncated=False
+        self.ended = terminated
         info = {'win': bool(mgr.player_won), 'floor': mgr.run_state.total_floor,
-                'act': mgr.run_state.current_act_index, 'timeout': truncated, 'primitive_steps': self.steps}
-        return self._obs(), (1.0 if mgr.player_won else -1.0) if terminated or truncated else 0.0, terminated, truncated, info
+                'act': mgr.run_state.current_act_index+1, 'timeout': game_limit, 'primitive_steps': self.steps}
+        reward,info['reward_components']=self.rewards.advance(mgr.run_state.total_floor,rounds,self.ended,bool(mgr.player_won))
+        return self._obs(), reward, terminated, truncated, info
 
     def close(self):
         self.run.close()

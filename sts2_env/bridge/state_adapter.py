@@ -65,6 +65,7 @@ _INTENT_STR_TO_IDX: dict[str, int] = {
     IntentName.DEFEND: 2,
     IntentName.BUFF: 3,
     IntentName.DEBUFF: 4,
+    "HEAL": 5,
 }
 
 # Mapping from JSON card ID strings to CardId enum values,
@@ -105,6 +106,10 @@ class StateAdapter:
         mask = adapter.compute_action_mask(state)
     """
 
+    def __init__(self, observation_version=1):
+        if observation_version not in (1,2,3):raise ValueError('Unknown observation version')
+        self.observation_version=observation_version
+
     def encode_observation(self, state: dict[str, Any]) -> np.ndarray:
         """Convert a game state JSON dict to a flat float32 observation vector.
 
@@ -123,6 +128,9 @@ class StateAdapter:
         # Current v2 payload: state["player"]
         combat = state.get("combat_state") or state
         if "player" not in combat:
+            if self.observation_version>=2:
+                from sts2_env.gym_env.observation_versions import schema
+                return np.zeros(schema(self.observation_version).OBS_SIZE,dtype=np.float32)
             return obs
 
         player = combat.get("player", {})
@@ -144,7 +152,8 @@ class StateAdapter:
         obs[idx + 1] = player.get("block", 0) / 50.0
         obs[idx + 2] = player.get("energy", 0) / 10.0
         obs[idx + 3] = player.get("max_energy", 3) / 10.0
-        idx += 4
+        obs[idx + 4] = player.get("stars", 0) / 5.0
+        idx += 5
 
         # --- Player powers (6) ---
         player_powers = _powers_to_dict(player.get("powers", []))
@@ -158,7 +167,7 @@ class StateAdapter:
             if i < len(hand):
                 card = hand[i]
                 card_id_str = card.get("id", "UNKNOWN")
-                card_enum = _CARD_STR_TO_ID.get(card_id_str)
+                card_enum = _CARD_STR_TO_ID.get(card_id_str) or _CARD_STR_TO_ID.get(card_id_str+"_CARD") or (_CARD_STR_TO_ID.get("SLOTH_STATUS") if card_id_str=="SLOTH" else None)
                 if card_enum is not None and card_enum in _CARD_ID_TO_IDX:
                     obs[idx] = (_CARD_ID_TO_IDX[card_enum] + 1) / (NUM_CARD_IDS + 1)
                 else:
@@ -197,16 +206,16 @@ class StateAdapter:
                 obs[idx + 1] = enemy.get("hp", 0) / enemy_max_hp
                 obs[idx + 2] = enemy.get("block", 0) / 50.0
 
-                # Intent encoding: primary intent fills slot 0
-                # (one-hot + damage + hits); the bridge JSON exposes only
-                # one intent per enemy, so overflow slots 1-2 stay zero.
                 if is_alive:
-                    intent_str = enemy.get("intent", "UNKNOWN")
-                    intent_idx = _INTENT_STR_TO_IDX.get(intent_str, -1)
-                    if 0 <= intent_idx < NUM_INTENT_TYPES:
-                        obs[idx + 3 + intent_idx] = 1.0
-                    obs[idx + 3 + NUM_INTENT_TYPES] = enemy.get("intent_damage", 0) / 30.0
-                    obs[idx + 3 + NUM_INTENT_TYPES + 1] = enemy.get("intent_hits", 1) / 5.0
+                    from sts2_env.gym_env.observation import _ENEMY_INTENT_SLOT_OFFSETS
+                    intents=enemy.get('intents') or [{'type':enemy.get('intent','UNKNOWN'),'damage':enemy.get('intent_damage',0),'hits':enemy.get('intent_hits',1)}]
+                    for offset,intent in zip(_ENEMY_INTENT_SLOT_OFFSETS,intents):
+                        kind=str(intent.get('type',intent.get('intent_type','UNKNOWN'))).upper()
+                        kind={'SINGLEATTACK':'ATTACK','MULTIATTACK':'MULTI_ATTACK'}.get(kind.removesuffix('INTENT'),kind.removesuffix('INTENT'))
+                        j=_INTENT_STR_TO_IDX.get(kind,-1)
+                        if j>=0:obs[idx+offset+j]=1
+                        obs[idx+offset+NUM_INTENT_TYPES]=(intent.get('damage') or 0)/30
+                        obs[idx+offset+NUM_INTENT_TYPES+1]=(intent.get('hits') or 1)/5
 
                 # Enemy powers
                 enemy_powers = _powers_to_dict(enemy.get("powers", []))
@@ -216,6 +225,15 @@ class StateAdapter:
 
             idx += ENEMY_FEATURES
 
+        if self.observation_version>=2:
+            from sts2_env.gym_env.combat_observation_v2 import extras
+            packet=dict(combat)
+            packet['round']=combat.get('round',combat.get('turn',0))
+            result=np.concatenate([obs,extras(packet)])
+            if self.observation_version==3:
+                from sts2_env.gym_env.combat_observation_v3 import extras as extras_v3
+                result=np.concatenate([result,extras_v3(packet)])
+            return result
         return obs
 
     def compute_action_mask(self, state: dict[str, Any]) -> np.ndarray:
@@ -369,5 +387,5 @@ def _powers_to_dict(powers: list[dict[str, Any]]) -> dict[str, int]:
         pid = p.get("id", "")
         amount = p.get("amount", 0)
         # Normalise to uppercase for matching
-        result[pid.upper()] = amount
+        result[pid.upper().removesuffix("_POWER")] = amount
     return result

@@ -133,7 +133,8 @@ def run_agent(
     """
     model = load_model(model_path) if model_path else None
     strategy_model = load_model(strategy_model_path) if strategy_model_path else None
-    adapter = StateAdapter()
+    from sts2_env.gym_env.observation_versions import version_for_shape
+    adapter = StateAdapter(observation_version=version_for_shape(model.observation_space.shape))
 
     logger.info("Connecting to STS2 at %s:%d...", host, port)
 

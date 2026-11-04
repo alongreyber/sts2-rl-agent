@@ -34,7 +34,7 @@ def test_encode_observation_keeps_reserved_pile_summary_slots_zero() -> None:
     adapter = StateAdapter()
     obs = adapter.encode_observation(_base_state())
 
-    pile_start = 4 + 6 + 50
+    pile_start = 5 + 6 + 50
     assert obs[pile_start] == 5 / 20.0
     assert obs[pile_start + 1] == 2 / 20.0
     assert obs[pile_start + 2] == 1 / 20.0
