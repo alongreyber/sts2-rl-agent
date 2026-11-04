@@ -9,7 +9,7 @@ import numpy as np
 from gymnasium import spaces
 
 from sts2_env.cards.base import reset_instance_counter
-from sts2_env.cards.ironclad import create_ironclad_starter_deck
+from sts2_env.characters.all import create_starting_deck
 from sts2_env.core.combat import CombatState
 from sts2_env.core.constants import ACTION_END_TURN, ACTION_SPACE_SIZE, IRONCLAD_STARTING_HP
 from sts2_env.encounters.act1 import ALL_ACT1_ENCOUNTERS, EncounterSetup
@@ -51,6 +51,8 @@ class STS2CombatEnv(gymnasium.Env):
         player_max_hp: int = IRONCLAD_STARTING_HP,
         max_turns: int = 200,
         render_mode: str | None = None,
+        relics: tuple[str, ...] = (),
+        character_id: str = "Ironclad",
     ):
         super().__init__()
         self.observation_space = spaces.Box(
@@ -62,6 +64,8 @@ class STS2CombatEnv(gymnasium.Env):
         self.player_max_hp = player_max_hp
         self.max_turns = max_turns
         self.render_mode = render_mode
+        self.relics = relics
+        self.character_id = character_id
 
         self.combat: CombatState | None = None
         #: Set when the episode ends (terminated or truncated). While set,
@@ -77,7 +81,7 @@ class STS2CombatEnv(gymnasium.Env):
         rng = Rng(rng_seed)
 
         # Create deck
-        deck = create_ironclad_starter_deck()
+        deck = create_starting_deck(self.character_id)
 
         # Create combat
         self.combat = CombatState(
@@ -85,7 +89,8 @@ class STS2CombatEnv(gymnasium.Env):
             player_max_hp=self.player_max_hp,
             deck=deck,
             rng_seed=rng_seed,
-            character_id="Ironclad",
+            character_id=self.character_id,
+            relics=self.relics,
         )
 
         # Setup encounter
