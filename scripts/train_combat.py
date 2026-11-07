@@ -61,16 +61,18 @@ def train(args):
 
     def make_masked_env(seed: int):
         def _init():
-            env = STS2CombatEnv(observation_version=args.observation_version)
-            env = ActionMasker(env, mask_fn)
+            env = STS2CombatEnv(
+                observation_version=args.observation_version
+            )
+            env.reset(seed=seed)
             return env
         return _init
 
     # Create vectorized envs
-    if args.n_envs > 1:
-        train_env = SubprocVecEnv([make_masked_env(i) for i in range(args.n_envs)])
-    else:
-        train_env = DummyVecEnv([make_masked_env(0)])
+    train_env = SubprocVecEnv(
+        [make_masked_env(i) for i in range(args.n_envs)],
+        start_method="spawn"
+    )
 
     # Eval env (always single)
     eval_env = DummyVecEnv([make_masked_env(9999)])
@@ -96,7 +98,7 @@ def train(args):
         eval_env,
         best_model_save_path=str(output_dir / "best_model"),
         log_path=str(output_dir / "eval_logs"),
-        eval_freq=max(args.eval_freq // args.n_envs, 1),
+        eval_freq=max(args.eval_freq, 1),
         n_eval_episodes=args.eval_episodes,
         deterministic=False,
     )
@@ -107,6 +109,7 @@ def train(args):
         total_timesteps=args.total_timesteps,
         callback=eval_callback,
         progress_bar=True,
+        log_interval=10
     )
     elapsed = time.perf_counter() - start
 
@@ -160,33 +163,36 @@ def evaluate(model, n_episodes: int = 100):
     print(f"Episodes:    {n_episodes}")
     print(f"Win rate:    {wins / n_episodes:.1%}")
     print(f"Avg reward:  {np.mean(total_rewards):.3f}")
+    env.close()
 
 
 def main():
     parser = argparse.ArgumentParser(description="Train MaskablePPO on STS2 combat")
-    parser.add_argument("--total-timesteps", type=int, default=500_000,
-                        help="Total training timesteps (default: 500000)")
-    parser.add_argument("--n-envs", type=int, default=4,
-                        help="Number of parallel environments (default: 4)")
+    parser.add_argument("--total-timesteps", type=int, default=30_000_000,
+                        help="Total training timesteps (default: 30000000)")
+    parser.add_argument("--n-envs", type=int, default=16,
+                        help="Number of parallel environments (default: 16)")
     parser.add_argument("--lr", type=float, default=3e-4,
                         help="Learning rate (default: 3e-4)")
-    parser.add_argument("--batch-size", type=int, default=256,
-                        help="Minibatch size (default: 256)")
-    parser.add_argument("--n-steps", type=int, default=2048,
-                        help="Steps per rollout per env (default: 2048)")
-    parser.add_argument("--n-epochs", type=int, default=10,
+    parser.add_argument("--batch-size", type=int, default=4096,
+                        help="Minibatch size (default: 1024)")
+    # 16 envs * 256 steps = 4,096 total buffer size (perfectly divisible by 1024 batch-size)
+    parser.add_argument("--n-steps", type=int, default=1024,
+                        help="Steps per rollout per env (default: 256)")
+    parser.add_argument("--n-epochs", type=int, default=4,
                         help="PPO epochs per update (default: 10)")
     parser.add_argument("--gamma", type=float, default=0.99,
                         help="Discount factor (default: 0.99)")
     parser.add_argument("--ent-coef", type=float, default=0.01,
                         help="Entropy coefficient (default: 0.01)")
-    parser.add_argument("--eval-freq", type=int, default=10_000,
-                        help="Evaluate every N steps (default: 10000)")
-    parser.add_argument("--eval-episodes", type=int, default=20,
-                        help="Episodes per evaluation (default: 20)")
+    # 4,096 * 25 = 102,400 (Perfectly aligned with rollout boundaries)
+    parser.add_argument("--eval-freq", type=int, default=16384,
+                        help="Evaluate every N steps (default: 102400)")
+    parser.add_argument("--eval-episodes", type=int, default=15,
+                        help="Episodes per evaluation (default: 15)")
     parser.add_argument("--output-dir", type=str, default="output/combat_ppo",
                         help="Output directory (default: output/combat_ppo)")
-    parser.add_argument('--observation-version',type=int,choices=(1,2,3),default=3)
+    parser.add_argument('--observation-version', type=int, choices=(1, 2, 3), default=3)
     args = parser.parse_args()
     train(args)
 

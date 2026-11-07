@@ -119,7 +119,7 @@ class STS2CombatEnv(gymnasium.Env):
                 "call reset() before stepping again."
             )
         assert self.combat is not None, "Must call reset() first"
-
+        prev_creatures = self.combat.all_creatures
         prev_hp = self.combat.player.current_hp
         if self.combat.pending_choice is not None:
             if action == ACTION_END_TURN:
@@ -144,7 +144,7 @@ class STS2CombatEnv(gymnasium.Env):
                     logger.debug("Ignored invalid card action %d", action)
 
         obs = self._encode(self.combat)
-        reward = compute_reward(self.combat, prev_hp)
+        reward = compute_reward(self.combat, prev_hp, self.combat.player.current_hp, prev_creatures, self.combat.all_creatures)
         terminated = self.combat.is_over
         # Gymnasium TimeLimit convention: truncation is reported through
         # ``truncated`` only, keeping it mutually exclusive with ``terminated``.
